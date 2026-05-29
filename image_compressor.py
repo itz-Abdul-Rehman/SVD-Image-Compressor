@@ -2,7 +2,7 @@
 =============================================================================
  MTH-203 Linear Algebra Project
  Topic  : Digital Image Compression using Singular Value Decomposition (SVD)
- Author : (Your Name)
+ Author : Abdul Rehman
  Date   : 2026-05-27
 =============================================================================
 
