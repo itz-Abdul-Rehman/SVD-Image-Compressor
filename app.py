@@ -217,6 +217,13 @@ div[data-baseweb="slider"] span {
 
 # ── SVD Core Functions ────────────────────────────────────────────────────────
 
+@st.cache_data
+def load_and_svd(file_bytes: bytes):
+    img = Image.open(io.BytesIO(file_bytes)).convert("L")
+    A   = np.array(img, dtype=np.float64)
+    U, S, Vt = np.linalg.svd(A, full_matrices=True)
+    return A, U, S, Vt
+
 def load_as_grayscale(file_obj) -> np.ndarray:
     img = Image.open(file_obj).convert("L")
     return np.array(img, dtype=np.float64)
@@ -268,29 +275,24 @@ with left:
     k2 = st.slider("k2  — Balanced",   1, 150, 30)
     k3 = st.slider("k3  — Fine",       1, 300, 100)
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    run = st.button("Run Compression", type="primary", use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
 with right:
-    if not run or uploaded is None:
+    if uploaded is None:
         st.markdown("""
         <div class="card" style="min-height:300px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;">
             <div style="font-size:15px;font-weight:600;color:#1a1a18">No results yet</div>
-            <div style="font-size:13px;color:#888880">Upload an image and click Run Compression</div>
+            <div style="font-size:13px;color:#888880">Upload an image to get started</div>
         </div>
         """, unsafe_allow_html=True)
-
-        if run and uploaded is None:
-            st.warning("Please upload an image first.")
 
     else:
         k_values = sorted({k1, k2, k3})
 
         with st.spinner("Computing SVD..."):
-            A    = load_as_grayscale(uploaded)
+            file_bytes = uploaded.getvalue()
+            A, U, S, Vt = load_and_svd(file_bytes)
             m, n = A.shape
-            U, S, Vt = np.linalg.svd(A, full_matrices=True)
             cum_energy = np.cumsum(S ** 2) / np.sum(S ** 2) * 100
 
             results = {}
