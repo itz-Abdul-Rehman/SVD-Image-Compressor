@@ -219,14 +219,13 @@ div[data-baseweb="slider"] span {
 
 @st.cache_data
 def load_and_svd(file_bytes: bytes):
-    img = Image.open(io.BytesIO(file_bytes)).convert("L")
-    A   = np.array(img, dtype=np.float64)
-    U, S, Vt = np.linalg.svd(A, full_matrices=True)
-    return A, U, S, Vt
-
-def load_as_grayscale(file_obj) -> np.ndarray:
-    img = Image.open(file_obj).convert("L")
-    return np.array(img, dtype=np.float64)
+    img = Image.open(io.BytesIO(file_bytes)).convert("RGB")
+    arr = np.array(img, dtype=np.float64)  # (H, W, 3)
+    svd_channels = []
+    for c in range(3):
+        U, S, Vt = np.linalg.svd(arr[:, :, c], full_matrices=True)
+        svd_channels.append((U, S, Vt))
+    return arr, svd_channels
 
 def rank_k_approx(U, S, Vt, k):
     k = min(k, len(S))
@@ -291,23 +290,32 @@ with right:
 
         with st.spinner("Computing SVD..."):
             file_bytes = uploaded.getvalue()
-            A, U, S, Vt = load_and_svd(file_bytes)
-            m, n = A.shape
+            A, svd_channels = load_and_svd(file_bytes)
+            m, n = A.shape[:2]
+            # Use green channel singular values for energy/error stats
+            _, S, _ = svd_channels[1]
             cum_energy = np.cumsum(S ** 2) / np.sum(S ** 2) * 100
 
             results = {}
             for k in k_values:
-                A_k   = rank_k_approx(U, S, Vt, k)
-                error = frobenius_error(A, A_k)
+                # Reconstruct each channel and stack into RGB
+                channels = []
+                total_error = 0.0
+                for c, (U, S_c, Vt) in enumerate(svd_channels):
+                    A_k_c = rank_k_approx(U, S_c, Vt, k)
+                    total_error += frobenius_error(A[:, :, c], A_k_c) ** 2
+                    channels.append(np.clip(A_k_c, 0, 255).astype(np.uint8))
+                rgb_matrix = np.stack(channels, axis=2)
+                error = float(np.sqrt(total_error))
                 pct, orig, comp = storage_savings(m, n, k)
                 energy = cum_energy[min(k, len(S)) - 1]
                 results[k] = {
-                    "matrix":  np.clip(A_k, 0, 255).astype(np.uint8),
+                    "matrix":  rgb_matrix,
                     "error":   error,
                     "savings": pct,
                     "energy":  energy,
-                    "orig":    orig,
-                    "comp":    comp,
+                    "orig":    orig * 3,
+                    "comp":    comp * 3,
                 }
 
         # ── Top metric cards ──────────────────────────────────────────────────
@@ -335,13 +343,13 @@ with right:
         for ax in axes:
             ax.set_facecolor("#ffffff")
 
-        axes[0].imshow(A, cmap="gray", vmin=0, vmax=255)
+        axes[0].imshow(A.astype(np.uint8))
         axes[0].set_title(f"Original\n{m} x {n}", fontsize=9, fontweight="bold", color="#1a1a18")
         axes[0].axis("off")
 
         for ax, k in zip(axes[1:], k_values):
             r = results[k]
-            ax.imshow(r["matrix"], cmap="gray", vmin=0, vmax=255)
+            ax.imshow(r["matrix"])
             ax.set_title(
                 f"Rank-{k}\n{r['savings']:.1f}% saved  |  err {r['error']:.0f}",
                 fontsize=9, color="#1a1a18"
